@@ -93,9 +93,9 @@ public class GraphAlliances extends Command {
       for (Nation ally: allies) {
         String name = game.getPlayer(nation.getLeaderIdentifier().id()).get().getName();
         String nameAlly = game.getPlayer(ally.getLeaderIdentifier().id()).get().getName();
-        String style = "endArrow=none;endFill=0;startArrow=none;strokeWidth=1;curved=1;snapToPoint=1;dashed=1;dashPattern=1;noLabel=1;strokeColor=#" + colour;
+        String style = "endArrow=classic;startArrow=none;strokeWidth=1;curved=1;snapToPoint=1;dashed=1;dashPattern=1;noLabel=1;strokeColor=#" + colour;
         if (((IAlliances) game).allied(ally.getLeaderIdentifier().id(), nation.getLeaderIdentifier().id())) {
-          style = "endArrow=none;endFill=0;startArrow=none;strokeWidth=1;curved=1;snapToPoint=1;noLabel=1;strokeColor=#" + borderColour;
+          style = "endArrow=none;startArrow=none;strokeWidth=1;curved=1;snapToPoint=1;noLabel=1;strokeColor=#" + borderColour;
         }
 
         graph.insertEdge(graph.getDefaultParent(), "", null, vertices.get(name), vertices.get(nameAlly), style);
@@ -112,7 +112,7 @@ public class GraphAlliances extends Command {
     var edgeStyle = graph.getStylesheet().getDefaultEdgeStyle();
     edgeStyle.put(mxConstants.STYLE_EDGE, mxConstants.SHAPE_LINE);
     //edgeStyle.put(mxConstants.STYLE_EDGE, mxConstants.EDGESTYLE_TOPTOBOTTOM);
-    edgeStyle.put(mxConstants.STYLE_ENDARROW, "none");
+    //edgeStyle.put(mxConstants.STYLE_ENDARROW, "none");
 
     graph.setAllowDanglingEdges(false);
 
@@ -123,13 +123,19 @@ public class GraphAlliances extends Command {
     if (!optGame.isPresent()) {
       input.event().getChannel().sendMessage(Error.create("You need to create a game before using this command.", this.settings)).queue();
       return true;
+    } else if (optGame.get().getPlayers().size() != optGame.get().getNations().size()) {
+      input.event().getChannel().sendMessage(Error.create("Not all players have selected a capital.", this.settings)).queue();
+      return true;
+    } else if (optGame.get().getNations().size() == 0 && optGame.get().getPlayers().size() == 0) {
+      input.event().getChannel().sendMessage(Error.create("Nobody has joined the game yet.", this.settings)).queue();
+      return true;
     } else if (!(optGame.get() instanceof IAlliances)) {
       input.event().getChannel().sendMessage(Error.create("Invalid game mode.", this.settings)).queue();
       return true;
     } else if (!optGame.get().getGameRule("alliances").isPresent() && !optGame.get().getGameRule("alliances").get().isEnabled()) {
       input.event().getChannel().sendMessage(Error.create("The alliances game rule is disabled.", this.settings)).queue();
       return true;
-    } 
+    }
     return false;
   }
 }
