@@ -3,12 +3,14 @@ package com.riskrieg.bot.core.commands.running;
 import com.mxgraph.layout.*;
 import com.mxgraph.util.mxCellRenderer;
 import com.mxgraph.util.mxConstants;
+import com.mxgraph.view.mxGraph;
 import com.riskrieg.api.Riskrieg;
 import com.riskrieg.bot.constant.BotConstants;
 import com.riskrieg.bot.core.Command;
 import com.riskrieg.bot.core.input.MessageInput;
 import com.riskrieg.bot.core.input.SlashInput;
 import com.riskrieg.bot.util.ImageUtil;
+import com.riskrieg.constant.Colors;
 import com.riskrieg.bot.util.Error;
 import com.riskrieg.gamemode.Game;
 import com.riskrieg.gamemode.IAlliances;
@@ -22,6 +24,7 @@ import java.awt.image.BufferedImage;
 import java.awt.Color;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.HashMap;
 import java.util.Optional;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.utils.AttachmentOption;
@@ -48,16 +51,14 @@ public class GraphAlliances extends Command {
       return;
     }
 
-    Graph<String, DefaultEdge> allianceGraph = generateAllyGraph(optGame.get());
-
     //Create the image from the graph
-    JGraphXAdapter<String, DefaultEdge> graphAdapter = stylizeGraph(optGame.get(), allianceGraph);
+    mxGraph graph = generateAllyGraph(optGame.get());
 
-    mxFastOrganicLayout layout = new mxFastOrganicLayout(graphAdapter);
+    mxCircleLayout layout = new mxCircleLayout(graph);
     layout.setDisableEdgeStyle(false);
-    layout.execute(graphAdapter.getDefaultParent());
+    layout.execute(graph.getDefaultParent());
 
-    BufferedImage image = mxCellRenderer.createBufferedImage(graphAdapter, null, 2, new Color(224, 218, 217) , true, null);
+    BufferedImage image = mxCellRenderer.createBufferedImage(graph, null, 2, Colors.TERRITORY_COLOR , true, null);
     String filename = "ally-graph";
 
     EmbedBuilder embedBuilder = new EmbedBuilder();
@@ -67,44 +68,40 @@ public class GraphAlliances extends Command {
     input.event().getChannel().sendMessage(embedBuilder.build()).addFile(ImageUtil.convertToByteArray(image), filename + ".png", new AttachmentOption[0]).queue();
   }
 
-  private Graph<String, DefaultEdge> generateAllyGraph(Game game) {
-    Graph<String, DefaultEdge> graph = new SimpleGraph<>(DefaultEdge.class);
+  private mxGraph generateAllyGraph(Game game) {
     Set<Nation> nationList = game.getNations();
+    mxGraph graph = new mxGraph();
     
+    String borderColour = String.format("%06x", 0xFFFFFF & Colors.BORDER_COLOR.getRGB());
+    HashMap<String, Object> vertices = new HashMap<String, Object>();
+
     //Create the graph by adding the player names as the vertices and then associating them
-    nationList.stream().forEach(nation -> graph.addVertex(game.getPlayer(nation.getLeaderIdentifier().id()).get().getName()));
     for (Nation nation: nationList) {
-      Set<Nation> allies = ((AllianceNation) nation).getAllies().stream()
-        .map(ally -> game.getNation(ally.id()).get())
-        .collect(Collectors.toSet());
-      allies.stream().filter(ally -> ((IAlliances) game).allied(ally.getLeaderIdentifier().id(), nation.getLeaderIdentifier().id()))
-        .forEach(ally -> graph.addEdge(
-          game.getPlayer(nation.getLeaderIdentifier().id()).get().getName(), 
-          game.getPlayer(ally.getLeaderIdentifier().id()).get().getName())
-      );
-    }
-    return graph;
-  }
-
-  private JGraphXAdapter<String, DefaultEdge> stylizeGraph(Game game, Graph<String, DefaultEdge> graph) {
-    JGraphXAdapter<String, DefaultEdge> graphAdapter = new JGraphXAdapter<String, DefaultEdge>(graph);
-
-    //Style vertices
-    for (Nation nation: game.getNations()) {
       String name = game.getPlayer(nation.getLeaderIdentifier().id()).get().getName();
       String colour = String.format("%06x", 0xFFFFFF & nation.getLeaderIdentifier().color().value().getRGB());
-      graphAdapter.getVertexToCellMap().get(name).setStyle("ellipse;whiteSpace=wrap;html=1;aspect=fixed;strokeWidth=1;noLabel=1;fillColor=#" + colour);
+      vertices.put(name, graph.insertVertex(
+        graph.getDefaultParent(), name, null, 0, 0, 15, 15,
+        "ellipse;whiteSpace=wrap;html=1;aspect=fixed;strokeWidth=1;noLabel=1;fillColor=#" + colour + ";strokeColor=#" + borderColour)
+      );
+    } for (Nation nation: nationList) {
+      String colour = String.format("%06x", 0xFFFFFF & nation.getLeaderIdentifier().color().value().getRGB());
 
-      graphAdapter.getVertexToCellMap().get(name).getGeometry().setWidth(15);
-      graphAdapter.getVertexToCellMap().get(name).getGeometry().setHeight(15);
+      Set<Nation> allies = ((AllianceNation) nation).getAllies().stream()
+        .map(ally -> game.getNation(ally.id()).get())
+        .collect(Collectors.toSet()
+      );
+      for (Nation ally: allies) {
+        String name = game.getPlayer(nation.getLeaderIdentifier().id()).get().getName();
+        String nameAlly = game.getPlayer(ally.getLeaderIdentifier().id()).get().getName();
+        String style = "endArrow=none;endFill=0;startArrow=none;strokeWidth=1;curved=1;snapToPoint=1;dashed=1;dashPattern=1;noLabel=1;strokeColor=#" + colour;
+        if (((IAlliances) game).allied(ally.getLeaderIdentifier().id(), nation.getLeaderIdentifier().id())) {
+          style = "endArrow=none;endFill=0;startArrow=none;strokeWidth=1;curved=1;snapToPoint=1;noLabel=1;strokeColor=#" + borderColour;
+        }
+
+        graph.insertEdge(graph.getDefaultParent(), "", null, vertices.get(name), vertices.get(nameAlly), style);
+      }
     }
-
-    //Style edges
-    for (var cell: graphAdapter.getEdgeToCellMap().values()) {
-      cell.setStyle("entryX=0;entryY=0.5;entryDx=0;entryDy=0;startFill=0;endArrow=none;endFill=0;startArrow=none;strokeWidth=1;curved=1;ignoreEdge=0;orthogonal=0;snapToPoint=1;noLabel=1");
-    }
-
-    var vertexStyle = graphAdapter.getStylesheet().getDefaultVertexStyle();
+    var vertexStyle = graph.getStylesheet().getDefaultVertexStyle();
     vertexStyle.put(mxConstants.STYLE_SHAPE, mxConstants.SHAPE_ELLIPSE);
     mxConstants.STYLE_ALIGN = mxConstants.ALIGN_CENTER;
     //If labels in vertices are to be set back on, uncomment this and set noLabel to 0 in style vertices and also increase the width and height
@@ -112,13 +109,14 @@ public class GraphAlliances extends Command {
     mxConstants.STYLE_ALIGN = mxConstants.ALIGN_CENTER;
     mxConstants.LABEL_INSET=1;*/ 
 
-     var edgeStyle = graphAdapter.getStylesheet().getDefaultEdgeStyle();
-    edgeStyle.put(mxConstants.STYLE_EDGE, mxConstants.EDGESTYLE_ORTHOGONAL);
+    var edgeStyle = graph.getStylesheet().getDefaultEdgeStyle();
+    edgeStyle.put(mxConstants.STYLE_EDGE, mxConstants.SHAPE_LINE);
+    //edgeStyle.put(mxConstants.STYLE_EDGE, mxConstants.EDGESTYLE_TOPTOBOTTOM);
     edgeStyle.put(mxConstants.STYLE_ENDARROW, "none");
 
-    graphAdapter.setAllowDanglingEdges(false);
+    graph.setAllowDanglingEdges(false);
 
-    return graphAdapter;
+    return graph;
   }
 
   private Boolean hasAnyError(Optional<Game> optGame, MessageInput input) {
